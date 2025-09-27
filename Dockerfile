@@ -3,7 +3,7 @@ FROM n8nio/n8n
 # Switch to root to install packages
 USER root
 
-# Install Chromium and dependencies
+# Install Chromium and dependencies (without libxss/libXScrnSaver)
 RUN apk add --no-cache \
       chromium \
       nss \
@@ -17,7 +17,6 @@ RUN apk add --no-cache \
       libxcomposite \
       libxdamage \
       libxrandr \
-      libXScrnSaver \
       libxtst
 
 # Switch back to non-root user (important for n8n security)

@@ -17,7 +17,7 @@ RUN apk add --no-cache \
       libxcomposite \
       libxdamage \
       libxrandr \
-      libxss \
+      libXScrnSaver \
       libxtst
 
 # Switch back to non-root user (important for n8n security)

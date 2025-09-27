@@ -1,4 +1,6 @@
-FROM n8nio/n8n:latest-debian
+FROM n8nio/n8n:latest-bullseye
+# or
+# FROM n8nio/n8n:latest-bookworm
 
 USER root
 

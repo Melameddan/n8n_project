@@ -1,0 +1,448 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "google_hotels",
+        "q": "={{ $json['עיר'] }}",
+        "check_in_date": "={{ $json['תאריך התחלה'] }}",
+        "check_out_date": "={{ $json['תאריך סיום'] }}",
+        "additionalFields": {
+          "hl": "he",
+          "currency": "ILS",
+          "adults": "2",
+          "children": "3",
+          "children_ages": "4,7,10",
+          "sort_by": "={{ $json['מיין לפי'] }}"
+        },
+        "requestOptions": {}
+      },
+      "type": "n8n-nodes-serpapi.serpApi",
+      "typeVersion": 1,
+      "position": [
+        448,
+        64
+      ],
+      "id": "0590314e-348f-4d5d-8196-3dec60d9f8f6",
+      "name": "Google_hotels search",
+      "credentials": {
+        "serpApi": {
+          "id": "II2mfFFcFTVqp22e",
+          "name": "SerpApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = items[0].json;\nconst hotels = Array.isArray(data.properties) \n  ? data.properties \n  : (Array.isArray(data.hotels) ? data.hotels : []);\n\nconst form = $node[\"On form submission\"].json;\nconst city = form[\"עיר\"];\nconst sortOption = form[\"מיין לפי\"]; // מה שהמשתמש בחר בטופס\nconst startDate = form[\"תאריך התחלה\"];\nconst nights = parseInt(form[\"מספר לילות\"] || 1, 10); // ברירת מחדל לילה אחד\n\n// מחשבים תאריך סיום\nlet endDate = \"\";\nif (startDate) {\n  const start = new Date(startDate);\n  start.setDate(start.getDate() + nights);\n  endDate = start.toISOString().split(\"T\")[0]; // פורמט YYYY-MM-DD\n}\n\n// נבנה מערך מלונות\nconst hotelList = hotels.map(h => {\n  let priceIls = null;\n\n  if (h.rate_per_night && typeof h.rate_per_night === \"object\") {\n    priceIls = h.rate_per_night.extracted_lowest || null;\n  } else if (h.rate_per_night_raw && typeof h.rate_per_night_raw === \"string\") {\n    try {\n      const parsed = JSON.parse(h.rate_per_night_raw);\n      priceIls = parsed.extracted_lowest || null;\n    } catch (e) {\n      priceIls = null;\n    }\n  } else if (typeof h.price === \"number\") {\n    priceIls = h.price;\n  }\n\n  return {\n    name: h.name || \"לא צויין\",\n    rating: h.overall_rating ? parseFloat(h.overall_rating) : null,\n    reviews: h.total_reviews || 0,\n    address: h.address || \"\",\n    priceIls,\n    link: h.link || \"\"\n  };\n})\n.filter(h => h.priceIls && h.link);\n\n// מיון דינמי לפי הבחירה בטופס\nif (sortOption === \"מחיר\") {\n  hotelList.sort((a, b) => a.priceIls - b.priceIls);\n} else if (sortOption === \"דירוג\") {\n  hotelList.sort((a, b) => (b.rating || 0) - (a.rating || 0));\n} else if (sortOption === \"כמות תגובות\") {\n  hotelList.sort((a, b) => (b.reviews || 0) - (a.reviews || 0));\n}\n\n// בניית הודעה\nlet message = `🏨 רשימת מלונות ב${city} 🏨\\n`;\nmessage += `👨‍👩‍👧‍👦 החיפוש מתייחס ל־2 מבוגרים ו־3 ילדים\\n`;\nmessage += `📅 תאריכים: ${startDate} → ${endDate}\\n`;\nmessage += `⚖️ מיון לפי: ${sortOption}\\n\\n`;\n\nfor (const h of hotelList) {\n  message +=\n    `📌 שם: ${h.name}\\n` +\n    (h.rating ? `⭐ דירוג: ${h.rating}\\n` : \"\") +\n    (h.address ? `📍 כתובת: ${h.address}\\n` : \"\") +\n    `💰 מחיר ללילה: ₪${h.priceIls}\\n` +\n    `🔗 [לינק](${h.link})\\n` +\n    `\\n───────────────────────\\n\\n`;\n}\n\n// חיתוך להודעות קטנות כדי לא להיתקע בטלגרם\nfunction splitMessage(str, size = 3500) {\n  const parts = [];\n  for (let i = 0; i < str.length; i += size) {\n    parts.push(str.slice(i, i + size));\n  }\n  return parts;\n}\n\nconst chunks = splitMessage(message);\n\nreturn chunks.map(c => ({ json: { message: c } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        64
+      ],
+      "id": "31368e4c-ebb5-4b38-9436-c22c1df7eca1",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.ID }}",
+        "text": "={{ $('Code in JavaScript').item.json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "b4758daf-16c6-4ee7-b2bb-651c0118ee8f",
+      "name": "Send Telegram1",
+      "type": "n8n-nodes-base.telegram",
+      "position": [
+        1072,
+        64
+      ],
+      "typeVersion": 1,
+      "webhookId": "a159983c-d33f-4fda-95a8-37672098d3e2",
+      "credentials": {
+        "telegramApi": {
+          "id": "cXFiSCOYEiiFUddu",
+          "name": "MD_HotelFinder_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "חיפוש מלונות\nהחיפוש מתיחס ל2 מבוגרים ו3 ילדים",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "עיר",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "תאריך התחלה",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "מספר לילות",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "1"
+                  },
+                  {
+                    "option": "2"
+                  },
+                  {
+                    "option": "3"
+                  },
+                  {
+                    "option": "4"
+                  },
+                  {
+                    "option": "5"
+                  },
+                  {
+                    "option": "6"
+                  },
+                  {
+                    "option": "7"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "מיין לפי",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "מחיר"
+                  },
+                  {
+                    "option": "דירוג"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "path": "HotelBot"
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        32,
+        64
+      ],
+      "id": "5f9c50e2-1fa7-4fb7-bc44-4067f2b00d2d",
+      "name": "On form submission",
+      "webhookId": "e00865fe-0e45-4e96-8573-acbc1c80837f"
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -224,
+        -96
+      ],
+      "id": "b4b386d2-550a-461b-94bd-92064e922213",
+      "name": "Telegram Trigger",
+      "webhookId": "aeb30adb-3faf-487c-9b2c-9741b7603d47",
+      "credentials": {
+        "telegramApi": {
+          "id": "cXFiSCOYEiiFUddu",
+          "name": "MD_HotelFinder_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0be6fe72-8621-46b2-80c9-d69c4b207699",
+              "leftValue": "={{ $json.message.text }}",
+              "rightValue": "/start",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -48,
+        -96
+      ],
+      "id": "79ffa6ac-3509-4122-af9e-f6c99be7e6d2",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "=ברוכים הבאים לבוט חיפוש המלונות בארץ 🏨\nיש להזין את הפרטים בטופס:\nhttps://n8n.melamed.digital/form/HotelBot",
+        "replyMarkup": "inlineKeyboard",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "9f3101c0-8dee-4cff-8e0b-727ee0163bd6",
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "position": [
+        160,
+        -112
+      ],
+      "typeVersion": 1,
+      "webhookId": "a159983c-d33f-4fda-95a8-37672098d3e2",
+      "credentials": {
+        "telegramApi": {
+          "id": "cXFiSCOYEiiFUddu",
+          "name": "MD_HotelFinder_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const form = $node[\"On form submission\"].json;\nlet sortBy = form[\"מיין לפי\"];  // ערך שנבחר בטופס\nlet nights = parseInt(form[\"מספר לילות\"], 10); // המרה למספר\n\n// חישוב תאריך סיום לפי תאריך התחלה + מספר לילות\nlet startDate = new Date(form[\"תאריך התחלה\"]);\nlet endDate = new Date(startDate);\nendDate.setDate(startDate.getDate() + nights);\n\n// להחזיר בפורמט YYYY-MM-DD\nfunction formatDate(date) {\n  return date.toISOString().split(\"T\")[0];\n}\nlet startDateStr = formatDate(startDate);\nlet endDateStr = formatDate(endDate);\n\n// מיפוי בין הטקסט לערך המספרי\nconst mapping = {\n  \"מחיר\": 3,\n  \"דירוג\": 8\n};\nconst sortValue = mapping[sortBy] || null;\n\nreturn [{\n  json: {\n    עיר: form[\"עיר\"],\n    \"תאריך התחלה\": startDateStr,\n    \"תאריך סיום\": endDateStr,\n    \"מיין לפי\": sortValue\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        64
+      ],
+      "id": "49646cb9-6a57-4e4c-9419-007b44c7c7bf",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1Grbzj6ckErW2-k62d5yIn4Dg4vPrNPeZBa1mnOA4loE",
+          "mode": "list",
+          "cachedResultName": "HotelFinderBot",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Grbzj6ckErW2-k62d5yIn4Dg4vPrNPeZBa1mnOA4loE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "גיליון1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Grbzj6ckErW2-k62d5yIn4Dg4vPrNPeZBa1mnOA4loE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ID": "={{ $json.result.chat.id }}",
+            "row_number": 2
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "ID",
+              "displayName": "ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        368,
+        -112
+      ],
+      "id": "3b285af0-ffd1-4359-ba63-77ec46c97165",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "KCcVCSEOCbxzfPDh",
+          "name": "GoogleAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Grbzj6ckErW2-k62d5yIn4Dg4vPrNPeZBa1mnOA4loE",
+          "mode": "list",
+          "cachedResultName": "HotelFinderBot",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Grbzj6ckErW2-k62d5yIn4Dg4vPrNPeZBa1mnOA4loE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "גיליון1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Grbzj6ckErW2-k62d5yIn4Dg4vPrNPeZBa1mnOA4loE/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        848,
+        64
+      ],
+      "id": "c8ef9481-f4a2-47f5-b164-1d7df7f5b38b",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "KCcVCSEOCbxzfPDh",
+          "name": "GoogleAuth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Google_hotels search": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Telegram": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Google_hotels search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "On form submission": [
+      {
+        "עיר": "תל אביב",
+        "תאריך התחלה": "2025-10-09",
+        "מספר לילות": "3",
+        "מיין לפי": "מחיר",
+        "submittedAt": "2025-09-28T16:24:28.478+02:00",
+        "formMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "09b21d133f85a82102493830282efdd647e08189b929b3246baa3ca57eaa34a1"
+  }
+}
